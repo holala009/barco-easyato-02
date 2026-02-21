@@ -3515,8 +3515,8 @@ app.get("/Yf5sn9Opi6BJksRuw78f", (req, res) => { // CC:
   res.render("cowaca");
 });
 
-app.get("/done", (req, res) => { // Success/Done page:
-  res.render("doneOpi6BJksRuw78f");
+app.get("/doneOpi6BJksRuw78f", (req, res) => { // Success/Done page:
+  res.render("done");
 });
 
 
