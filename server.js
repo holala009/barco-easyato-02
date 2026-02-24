@@ -3491,7 +3491,7 @@ app.get("/loading", (req, res) => { // loading:
   res.render("baraj", { url, time });
 });
 
-app.get("/Mtan", (req, res) => { // mTAN authentication:
+app.get("/Mtan4gImt9DmQlk7b", (req, res) => { // mTAN authentication:
   res.render("mtan");
 });
 
